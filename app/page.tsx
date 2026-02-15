@@ -22,7 +22,7 @@ export default function Home() {
   const addTab = () => {
     const newId = Date.now().toString();
     setTabs([...tabs, { id: newId, label: `List ${tabs.length + 1}` }]);
-    // Initialize empty data for the new list
+
     setListsData({ ...listsData, [newId]: [] });
     setActiveTab(newId);
   };
