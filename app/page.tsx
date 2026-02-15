@@ -1,33 +1,60 @@
 "use client";
 
-import React, { useState } from 'react';
-import { Plus, Users, X } from 'lucide-react'; 
+/* CHANGES NEEDED:
+  1. Load and populate different tabs from database on page load(Make sure to save pages automatically after being created).
+  2. Allow user to rename tabs when clicking on the tab name (make sure to save the new name to the database).
+  3. Add warning to delete tab
+*/
 
-// Mock Data for the different lists
-const INITIAL_DATA: Record<string, any[]> = {
-  'default': [
-    { id: 1, name: "Alice Johnson", role: "Product Designer", status: "Active" },
-    { id: 2, name: "Bob Smith", role: "Lead Engineer", status: "Away" },
-  ],
-  'new': [
-    { id: 3, name: "Charlie Davis", role: "Researcher", status: "Busy" },
-  ]
-};
+import React, { useEffect, useState } from 'react';
+import { Plus, Users, X } from 'lucide-react'; 
 
 export default function Home() {
   const [tabs, setTabs] = useState([{ id: 'default', label: 'All People' }]);
   const [activeTab, setActiveTab] = useState('default');
-  const [listsData, setListsData] = useState(INITIAL_DATA);
+  const [listsData, setListsData] = useState<Record<string, any[]>>({});
+
+  useEffect(() => {
+  async function fetchPeople() {
+    const res = await fetch("/api/people");
+    const data = await res.json();
+
+    const grouped = data.reduce((acc: any, person: any) => {
+      if (!acc[person.list_id]) acc[person.list_id] = [];
+      acc[person.list_id].push(person);
+      return acc;
+    }, {});
+
+    setListsData(grouped);
+
+    // Create tabs dynamically from database lists
+    const dynamicTabs = Object.keys(grouped).map((id) => ({
+      id,
+      label: `Page ${id}`
+    }));
+
+    if (dynamicTabs.length > 0) {
+      setTabs(dynamicTabs);
+      setActiveTab(dynamicTabs[0].id);
+    }
+  }
+
+  fetchPeople();
+}, []);
+
 
   const addTab = () => {
     const newId = Date.now().toString();
-    setTabs([...tabs, { id: newId, label: `List ${tabs.length + 1}` }]);
+    setTabs([...tabs, { id: newId, label: `Page ${tabs.length + 1}` }]);
+
+    // Initialize empty data for the new tab here
 
     setListsData({ ...listsData, [newId]: [] });
     setActiveTab(newId);
   };
 
   const removeTab = (id: string, e: React.MouseEvent) => {
+    // Here figure out how to delete content from tab from database as well
     e.stopPropagation();
     if (tabs.length > 1) {
       const newTabs = tabs.filter(t => t.id !== id);
