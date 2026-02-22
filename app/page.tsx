@@ -15,52 +15,80 @@ export default function Home() {
   const [listsData, setListsData] = useState<Record<string, any[]>>({});
 
   useEffect(() => {
-  async function fetchPeople() {
-    const res = await fetch("/api/people");
-    const data = await res.json();
+    async function fetchLists() {
+      const res = await fetch("/api/lists");
 
-    const grouped = data.reduce((acc: any, person: any) => {
-      if (!acc[person.list_id]) acc[person.list_id] = [];
-      acc[person.list_id].push(person);
-      return acc;
-    }, {});
+      if (!res.ok) {
+        console.error("Failed to fetch lists");
+        return;
+      }
 
-    setListsData(grouped);
+      const data = await res.json();
 
-    // Create tabs dynamically from database lists
-    const dynamicTabs = Object.keys(grouped).map((id) => ({
-      id,
-      label: `Page ${id}`
-    }));
+      // Create tabs directly from database lists
+      const dynamicTabs = data.map((list: any) => ({
+        id: list.id.toString(),
+        label: list.name,
+      }));
 
-    if (dynamicTabs.length > 0) {
       setTabs(dynamicTabs);
-      setActiveTab(dynamicTabs[0].id);
+      if (dynamicTabs.length > 0) {
+        setActiveTab(dynamicTabs[0].id);
+      }
+
+      // Store people by list_id
+      const listsMap: Record<string, any[]> = {};
+      data.forEach((list: any) => {
+        listsMap[list.id] = list.people;
+      });
+
+      setListsData(listsMap);
     }
-  }
 
-  fetchPeople();
-}, []);
+    fetchLists();
+  }, []);
 
 
-  const addTab = () => {
-    const newId = Date.now().toString();
-    setTabs([...tabs, { id: newId, label: `Page ${tabs.length + 1}` }]);
+  const addTab = async () => {
+    const name = `New List`;
 
-    // Initialize empty data for the new tab here
+    const res = await fetch("/api/lists", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
 
-    setListsData({ ...listsData, [newId]: [] });
-    setActiveTab(newId);
+    if (!res.ok) return;
+
+    const newList = await res.json();
+
+    setTabs([...tabs, { id: newList.id.toString(), label: newList.name }]);
+    setListsData({ ...listsData, [newList.id]: [] });
+    setActiveTab(newList.id.toString());
   };
 
-  const removeTab = (id: string, e: React.MouseEvent) => {
-    // Here figure out how to delete content from tab from database as well
+  const removeTab = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (tabs.length > 1) {
-      const newTabs = tabs.filter(t => t.id !== id);
-      setTabs(newTabs);
-      if (activeTab === id) setActiveTab(newTabs[0].id);
+
+    if (tabs.length <= 1) return;
+
+    const confirmed = confirm("Are you sure you want to delete this list?");
+    if (!confirmed) return;
+
+    await fetch(`/api/lists/${id}`, {
+      method: "DELETE",
+    });
+
+    const newTabs = tabs.filter(t => t.id !== id);
+    setTabs(newTabs);
+
+    if (activeTab === id) {
+      setActiveTab(newTabs[0].id);
     }
+
+    const updatedLists = { ...listsData };
+    delete updatedLists[id];
+    setListsData(updatedLists);
   };
 
   // Get the people for the current active tab (default to empty array if not found)
