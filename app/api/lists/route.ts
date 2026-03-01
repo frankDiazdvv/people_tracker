@@ -4,30 +4,35 @@ import { sql } from "@/lib/db";
 // GET /api/lists | Fetch all lists from the database
 export async function GET() {
   try {
-    const people = await sql`
+    const lists = await sql`
       SELECT 
         l.id,
         l.name,
         COALESCE(
-            json_agg(
-            json_build_object(
-                'id', p.id,
-                'name', p.name,
-                'role', p.role,
-                'status', p.status
+          json_agg(
+            DISTINCT jsonb_build_object(
+              'id', p.id,
+              'name', p.name,
+              'role', p.role,
+              'status', p.status
             )
-            ) FILTER (WHERE p.id IS NOT NULL),
-            '[]'
+          ) FILTER (WHERE p.id IS NOT NULL),
+          '[]'
         ) AS people
-        FROM lists l
-        LEFT JOIN people p ON p.list_id = l.id
-        GROUP BY l.id
-        ORDER BY l.id;
+      FROM lists l
+      LEFT JOIN list_people lp ON lp.list_id = l.id
+      LEFT JOIN people p ON p.id = lp.person_id
+      GROUP BY l.id
+      ORDER BY l.id;
     `;
 
-    return NextResponse.json(people);
+    return NextResponse.json(lists);
   } catch (error) {
-    return NextResponse.json({ error: "Failed to fetch people" }, { status: 500 });
+    console.error(error);
+    return NextResponse.json(
+      { error: "Failed to fetch lists" },
+      { status: 500 }
+    );
   }
 }
 

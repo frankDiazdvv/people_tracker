@@ -11,43 +11,61 @@ import { Plus, Users, X } from 'lucide-react';
 
 export default function Home() {
   const [tabs, setTabs] = useState([{ id: 'default', label: 'All People' }]);
+  const [allPeople, setAllPeople] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState('default');
   const [listsData, setListsData] = useState<Record<string, any[]>>({});
+  const [addMemberModalOpen, setAddMemberModalOpen] = useState(false);
+  const [newMemberModalOpen, setNewMemberModalOpen] = useState(false);
 
   useEffect(() => {
     async function fetchLists() {
-      const res = await fetch("/api/lists");
+      try {
+        const res = await fetch("/api/lists");
 
-      if (!res.ok) {
-        console.error("Failed to fetch lists");
-        return;
+        if (!res.ok) {
+          console.error("Failed to fetch lists");
+          return;
+        }
+
+        const data = await res.json();
+
+        if (!Array.isArray(data)) return;
+
+        const dynamicTabs = data.map((list: any) => ({
+          id: list.id.toString(),
+          label: list.name,
+        }));
+
+        setTabs(dynamicTabs);
+
+        // Only set activeTab if none exists yet
+        setActiveTab(prev =>
+          prev && dynamicTabs.some(t => t.id === prev)
+            ? prev
+            : dynamicTabs[0]?.id ?? ""
+        );
+
+        const listsMap: Record<string, any[]> = {};
+        data.forEach((list: any) => {
+          listsMap[list.id] = list.people || [];
+        });
+
+        setListsData(listsMap);
+
+      } catch (err) {
+        console.error("Error fetching lists:", err);
       }
-
-      const data = await res.json();
-
-      // Create tabs directly from database lists
-      const dynamicTabs = data.map((list: any) => ({
-        id: list.id.toString(),
-        label: list.name,
-      }));
-
-      setTabs(dynamicTabs);
-      if (dynamicTabs.length > 0) {
-        setActiveTab(dynamicTabs[0].id);
-      }
-
-      // Store people by list_id
-      const listsMap: Record<string, any[]> = {};
-      data.forEach((list: any) => {
-        listsMap[list.id] = list.people;
-      });
-
-      setListsData(listsMap);
     }
 
     fetchLists();
   }, []);
 
+  const fetchAllPeople = async () => {
+    const res = await fetch("/api/people");
+    if (!res.ok) return;
+    const data = await res.json();
+    setAllPeople(data);
+  };
 
   const addTab = async () => {
     const name = `New List`;
@@ -91,8 +109,69 @@ export default function Home() {
     setListsData(updatedLists);
   };
 
+  const createMember = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+
+    const formData = new FormData(e.currentTarget);
+
+    const payload = {
+      name: formData.get("name"),
+      role: formData.get("role"),
+      status: formData.get("status"),
+      email: formData.get("email"),
+      phone: formData.get("phone"),
+    };
+
+    // Create person globally
+    const res = await fetch("/api/people", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      console.error("Failed to create person.");
+      return;
+    }
+
+    const newPerson = await res.json();
+
+    // Attach to active list
+    await fetch(`/api/lists/${activeTab}/people`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ person_id: newPerson.id }),
+    });
+
+    // Update UI
+    setListsData((prev) => ({
+      ...prev,
+      [activeTab]: [...(prev[activeTab] || []), newPerson],
+    }));
+
+    setNewMemberModalOpen(false);
+    setAddMemberModalOpen(false);
+  };
+
+  const attachPersonToList = async (person: any) => {
+    await fetch(`/api/lists/${activeTab}/people`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ person_id: person.id }),
+    });
+
+    setListsData((prev) => ({
+      ...prev,
+      [activeTab]: [...(prev[activeTab] || []), person],
+    }));
+
+    setAddMemberModalOpen(false);
+  };
+
   // Get the people for the current active tab (default to empty array if not found)
   const currentPeople = listsData[activeTab] || [];
+  const currentIds = new Set(currentPeople.map(p => p.id));
+  const availablePeople = allPeople.filter(p => !currentIds.has(p.id));
 
   return (
     <main className="min-h-screen bg-[#191919] text-[#E3E3E3] font-sans flex flex-col">
@@ -167,11 +246,124 @@ export default function Home() {
             )}
           </div>
 
-          <button className="flex items-center gap-2 w-full px-2 py-3 text-zinc-500 hover:bg-[#252525] rounded-md mt-2 transition-colors border border-transparent hover:border-[#2F2F2F]">
+          <button 
+            className="flex items-center gap-2 w-full px-2 py-3 text-zinc-500 hover:bg-[#252525] rounded-md mt-2 transition-colors border border-transparent cursor-pointer hover:border-[#2F2F2F]"
+            onClick={() => {
+              fetchAllPeople();
+              setAddMemberModalOpen(true);
+            }}
+          >
             <Plus size={16} />
-            <span className="text-sm">New member</span>
+            <span className="text-sm">Add member</span>
           </button>
         </div>
+        
+          {/* ADD MEMBER MODAL */}
+          {addMemberModalOpen && (
+            <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+              <div
+                className="bg-[#1F1F1F] p-6 rounded-xl w-full max-w-md shadow-xl space-y-4"
+              >
+                <div className="flex justify-between items-center">
+                  <h2 className="text-lg font-semibold">Member List</h2>
+                  <button
+                    type="button"
+                    onClick={() => setAddMemberModalOpen(false)}
+                    className="text-zinc-400 hover:text-white"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div className="space-y-2 max-h-60 overflow-y-auto">
+                  {availablePeople.length > 0 ? (
+                    availablePeople.map((person) => (
+                      <div
+                        key={person.id}
+                        onClick={() => attachPersonToList(person)}
+                        className="p-2 bg-[#2A2A2A] rounded-md cursor-pointer hover:bg-[#333]"
+                      >
+                        {person.name}
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-zinc-500 text-sm">No people found.</p>
+                  )}
+                </div>
+
+                <button 
+                  className="w-full py-2 bg-[#2F2F2F] hover:bg-[#3F3F3F] rounded-md text-sm transition-colors cursor-pointer"
+                  onClick={() => setNewMemberModalOpen(true)}
+                >
+                  <span className="text-sm">Create New Member</span>
+                </button>
+                
+              </div>
+            </div>
+          )}
+
+          {/* CREATE NEW MEMBER MODAL */}
+          {newMemberModalOpen && (
+            <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+              <form
+                onSubmit={createMember}
+                className="bg-[#1F1F1F] p-6 rounded-xl w-full max-w-md shadow-xl space-y-4"
+              >
+                <div className="flex justify-between items-center">
+                  <h2 className="text-lg font-semibold">Create New Member</h2>
+                  <button
+                    type="button"
+                    onClick={() => setNewMemberModalOpen(false)}
+                    className="text-zinc-400 hover:text-white"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div className="space-y-2">
+                  <input
+                    type="text"
+                    name="name"
+                    placeholder="Full Name"
+                    required
+                    className="w-full px-3 py-2 bg-[#2A2A2A] rounded-md text-sm outline-none"
+                  />
+                  <input
+                    type="text"
+                    name="role"
+                    placeholder="Role"
+                    className="w-full px-3 py-2 bg-[#2A2A2A] rounded-md text-sm outline-none"
+                  />
+                  <select
+                    name="status"
+                    className="w-full px-3 py-2 bg-[#2A2A2A] rounded-md text-sm outline-none"
+                  >
+                    <option value="Active">Active</option>
+                    <option value="Inactive">Inactive</option>
+                  </select>
+                  <input
+                    type="email"
+                    name="email"
+                    placeholder="Email"
+                    className="w-full px-3 py-2 bg-[#2A2A2A] rounded-md text-sm outline-none"
+                  />
+                  <input
+                    type="text"
+                    name="phone"
+                    placeholder="Phone"
+                    className="w-full px-3 py-2 bg-[#2A2A2A] rounded-md text-sm outline-none"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full py-2 bg-[#2F2F2F] hover:bg-[#3F3F3F] rounded-md text-sm transition-colors"
+                >
+                  Create Member
+                </button>
+              </form>
+            </div>
+          )}
       </div>
     </main>
   );
