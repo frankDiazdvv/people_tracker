@@ -13,8 +13,10 @@ export async function GET() {
             DISTINCT jsonb_build_object(
               'id', p.id,
               'name', p.name,
-              'role', p.role,
-              'status', p.status
+              'role_id', lp.role_id,
+              'status_id', lp.status_id,
+              'role', r.name,
+              'status', s.name
             )
           ) FILTER (WHERE p.id IS NOT NULL),
           '[]'
@@ -22,6 +24,8 @@ export async function GET() {
       FROM lists l
       LEFT JOIN list_people lp ON lp.list_id = l.id
       LEFT JOIN people p ON p.id = lp.person_id
+      LEFT JOIN list_roles r ON r.id = lp.role_id
+      LEFT JOIN list_statuses s ON s.id = lp.status_id
       GROUP BY l.id
       ORDER BY l.id;
     `;

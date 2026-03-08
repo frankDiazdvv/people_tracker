@@ -1,9 +1,12 @@
 "use client";
 
 /* CHANGES NEEDED:
-  1. Load and populate different tabs from database on page load(Make sure to save pages automatically after being created).
-  2. Allow user to rename tabs when clicking on the tab name (make sure to save the new name to the database).
-  3. Add warning to delete tab
+  1. Create New Member throws an errror.
+  2. Create new member modal and add existing member modal are overlapping and it looks bad visually.
+  3. Allow user to rename tabs when clicking on the tab name (make sure to save the new name to the database).
+  4. Add click on user to see details
+  5. Change status on click
+  6. Add Settings top right that shows name and options to see all people, statuses and roles. ***
 */
 
 import React, { useEffect, useState } from 'react';
@@ -16,6 +19,8 @@ export default function Home() {
   const [listsData, setListsData] = useState<Record<string, any[]>>({});
   const [addMemberModalOpen, setAddMemberModalOpen] = useState(false);
   const [newMemberModalOpen, setNewMemberModalOpen] = useState(false);
+  const [roles, setRoles] = useState<Record<string, any[]>>({});
+  const [statuses, setStatuses] = useState<Record<string, any[]>>({});
 
   useEffect(() => {
     async function fetchLists() {
@@ -65,6 +70,19 @@ export default function Home() {
     if (!res.ok) return;
     const data = await res.json();
     setAllPeople(data);
+  };
+
+  const fetchListMetadata = async (listId: string) => {
+    const [rolesRes, statusesRes] = await Promise.all([
+      fetch(`/api/lists/${listId}/roles`),
+      fetch(`/api/lists/${listId}/statuses`)
+    ]);
+
+    const rolesData = await rolesRes.json();
+    const statusesData = await statusesRes.json();
+
+    setRoles(prev => ({ ...prev, [listId]: rolesData }));
+    setStatuses(prev => ({ ...prev, [listId]: statusesData }));
   };
 
   const addTab = async () => {
@@ -168,6 +186,36 @@ export default function Home() {
     setAddMemberModalOpen(false);
   };
 
+  const updateRole = async (personId: number, roleId: string) => {
+    await fetch(`/api/lists/${activeTab}/people/${personId}/role`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ role_id: roleId || null }),
+    });
+
+    setListsData(prev => ({
+      ...prev,
+      [activeTab]: prev[activeTab].map((p: any) =>
+        p.id === personId ? { ...p, role_id: roleId } : p
+      )
+    }));
+  };
+
+  const updateStatus = async (personId: number, statusId: string) => {
+    await fetch(`/api/lists/${activeTab}/people/${personId}/status`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status_id: statusId || null }),
+    });
+
+    setListsData(prev => ({
+      ...prev,
+      [activeTab]: prev[activeTab].map((p: any) =>
+        p.id === personId ? { ...p, status_id: statusId } : p
+      )
+    }));
+  };
+
   // Get the people for the current active tab (default to empty array if not found)
   const currentPeople = listsData[activeTab] || [];
   const currentIds = new Set(currentPeople.map(p => p.id));
@@ -182,7 +230,10 @@ export default function Home() {
           {tabs.map((tab) => (
             <div
               key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => {
+                setActiveTab(tab.id);
+                fetchListMetadata(tab.id);
+              }}
               className={`flex items-center gap-2 px-3 py-1.5 rounded-t-md cursor-pointer text-sm transition-colors group whitespace-nowrap
                 ${activeTab === tab.id 
                   ? 'bg-[#2F2F2F] text-white border-b-2 border-[#E3E3E3]' 
@@ -233,9 +284,37 @@ export default function Home() {
                     <div className="w-6 h-6 bg-zinc-700 rounded-full flex items-center justify-center text-[10px]">{person.name.charAt(0)}</div>
                     {person.name}
                   </div>
-                  <div className="text-zinc-400 text-sm flex items-center">{person.role}</div>
+                  <select
+                    value={person.role_id || ""}
+                    onChange={(e) =>
+                      updateRole(person.id, e.target.value)
+                    }
+                    className="bg-[#2A2A2A] text-sm rounded px-2 py-1"
+                  >
+                    <option value="">Select role</option>
+
+                    {(roles[activeTab] || []).map((role: any) => (
+                      <option key={role.id} value={role.id}>
+                        {role.name}
+                      </option>
+                    ))}
+                  </select>
                   <div className="flex items-center">
-                    <span className="px-2 py-0.5 rounded-full text-[11px] bg-[#2F2F2F] text-zinc-300">{person.status}</span>
+                    <select
+                      value={person.status_id || ""}
+                      onChange={(e) =>
+                        updateStatus(person.id, e.target.value)
+                      }
+                      className="bg-[#2A2A2A] text-sm rounded px-2 py-1"
+                    >
+                      <option value="">Select status</option>
+
+                      {(statuses[activeTab] || []).map((status: any) => (
+                        <option key={status.id} value={status.id}>
+                          {status.name}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 </div>
               ))
